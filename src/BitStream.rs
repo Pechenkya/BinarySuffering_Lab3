@@ -37,7 +37,10 @@ impl BitStream {
             buff = vec![0u8; BUFF_MAX_BYTE_SIZE];
         }
         else {
-            file_stream = OpenOptions::new().append(true).create(true)
+            file_stream = OpenOptions::new().read(true)
+                                            .create(true)
+                                            .write(true)
+                                            .truncate(false)
                                             .open(file_path).unwrap();
             buff = Vec::new();
         }
@@ -99,7 +102,7 @@ impl BitStream {
             if remaining_bits != 0 {
                 if remaining_bits + basic_shift > 8 {
                     self.buff[last_byte_id] |= in_buff[in_buff.len() - 1] << basic_shift;
-                    self.buff.push((in_buff[in_buff.len() - 1] << (8 - remaining_bits)) >> (8 - remaining_bits + basic_shift));
+                    self.buff.push((in_buff[in_buff.len() - 1] << (8 - remaining_bits)) >> (16 - remaining_bits - basic_shift));
                 }
                 else {
                     self.buff[last_byte_id] |= (in_buff[in_buff.len() - 1] << (8 - remaining_bits)) >> (8 - remaining_bits - basic_shift);
@@ -108,7 +111,7 @@ impl BitStream {
         }
         self.bit_pointer += bit_len;
 
-        println!("Buffer after write (LSB-F): {}", bin_string_LSBF(&self.buff));
+        // println!("Buffer after write (LSB-F): {}", bin_string_LSBF(&self.buff));
         Ok(())
     }
 
@@ -117,7 +120,7 @@ impl BitStream {
             return create_error("BitStream cannot be flushed in read mode");
         }
 
-        println!("Buffer on flush (LSB-F): {}", bin_string_LSBF(&self.buff));
+        // println!("Buffer on flush (LSB-F): {}", bin_string_LSBF(&self.buff));
 
         self.file.write_all(&self.buff)?;
         self.file.flush()?;
@@ -141,7 +144,7 @@ impl BitStream {
             if (self.byte_chunk_size * 8 - self.bit_pointer) == 0 {
                 let bytes_read = self.file.read(&mut self.buff)?;
                 if bytes_read == 0 {
-                    println!("Warning! Reached EOF for stream in read operation!");
+                    // println!("Warning! Reached EOF for stream in read operation!");
                     return Ok(result);
                 }
                 self.byte_chunk_size = bytes_read;
@@ -175,10 +178,11 @@ impl BitStream {
 
                 // Corner case of empty return vector
                 if result.is_empty() {
-                    result.push(self.buff[byte_id] >> basic_shift);
-                    byte_id += 1;
-                    bits_read += 8 - basic_shift;
-                    self.bit_pointer += 8 - basic_shift;
+                    result.push(0);
+                    // result.push(self.buff[byte_id] >> basic_shift);
+                    // byte_id += 1;
+                    // bits_read += 8 - basic_shift;
+                    // self.bit_pointer += 8 - basic_shift;
                 }
 
                 let mut bits_left = min(size - bits_read, bit_chunk_size - self.bit_pointer);
@@ -230,6 +234,8 @@ impl BitStream {
 
         self.file.rewind()?;
         self.buff.clear();
+        self.buff.resize(BUFF_MAX_BYTE_SIZE, 0u8);
+        
         self.bit_pointer = 0;
         self.byte_chunk_size = 0;
 
