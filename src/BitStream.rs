@@ -207,7 +207,7 @@ impl BitStream {
                 // Process tail bits
                 if bits_left != 0
                 {
-                    if bits_left > basic_shift {
+                    if bits_left > 8 - basic_shift {
                         result[last_id] |= self.buff[byte_id] << (8 - basic_shift);
                         // Remainder has size b_l - b_s, to get it we need to shift left on 8 - b_l (clear high bits)
                         // And then to set it to low bits we need to move it on 8 - b_l + b_s (mattth)
@@ -216,7 +216,9 @@ impl BitStream {
                     else 
                     {
                         // Set the last bits to the end of the buffer (clear high bits, then move to low on b_s - b_l (mathhh))
-                        result[last_id] |= ((self.buff[byte_id] << (8 - bits_left)) >> (8 - bits_left)) << (8 - basic_shift);
+                        // result[last_id] |= ((self.buff[byte_id] << (8 - bits_left)) >> (8 - bits_left)) << basic_shift;
+                        let _debug_byte_val = self.buff[byte_id];
+                        result[last_id] |= ((self.buff[byte_id] >> basic_shift) << (8 - bits_left)) >> (8 - bits_left);
                     }
                     bits_read += bits_left;
                     self.bit_pointer += bits_left;

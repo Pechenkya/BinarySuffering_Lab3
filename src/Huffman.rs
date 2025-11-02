@@ -76,19 +76,39 @@ impl HuffmanEncoder {
         let mut stack: Vec<(&Node, [u8; 32], u8)> = Vec::new();
         stack.push((self.root.as_ref().unwrap(), [0; 32], 0));
 
-        while let Some((node, mut acc_code,  mut code_length)) = stack.pop() {
+        // while let Some((node, acc_code, code_length)) = stack.pop() {
+        //     if let Some(byte_value) = node.byte_value {
+        //         self.codes[byte_value as usize] = (acc_code, code_length);
+        //     } else {
+        //         let ref right = node.right.as_ref().unwrap();
+        //         let ref left = node.left.as_ref().unwrap();
+
+        //         // Change add 1 to right branch, add 0 to left branch (just increase lehgth)
+        //         let mut r_acc_code = acc_code;
+        //         r_acc_code[(code_length / 8) as usize] |= 1 << (code_length % 8);
+                
+        //         // Push right first so left is processed first
+        //         stack.push((right, r_acc_code, code_length + 1));
+        //         stack.push((left, acc_code, code_length + 1));
+                
+
+        //         // if let Some(ref left) = node.left {
+        //         // }
+        //     }
+        // }
+
+        while let Some((node, acc_code, code_length)) = stack.pop() {
             if let Some(byte_value) = node.byte_value {
                 self.codes[byte_value as usize] = (acc_code, code_length);
             } else {
                 if let Some(ref right) = node.right {
-                    acc_code[(code_length / 8) as usize] |= 1 << (code_length % 8);
-                    code_length += 1;
-                    stack.push((right, acc_code, code_length));
+                    let mut r_acc_code = acc_code;
+                    r_acc_code[(code_length / 8) as usize] |= 1 << (code_length % 8);
+                    stack.push((right, r_acc_code, code_length + 1));
                 }
 
                 if let Some(ref left) = node.left {
-                    code_length += 1;
-                    stack.push((left, acc_code, code_length));
+                    stack.push((left, acc_code, code_length + 1));
                 }
             }
         }
@@ -119,6 +139,9 @@ impl HuffmanEncoder {
             deb_print.sort_by_key(|(_, &mut l, _)| l);
 
             println!("Codes ({}): {:?}", deb_print.len(), deb_print);
+            println!("Code for i: {:b}", internal_encoder.codes[b'i' as usize].0[0]);
+            println!("Code for L: {:b}", internal_encoder.codes[b'L' as usize].0[0]);
+            println!("Code for Space: {:b}", internal_encoder.codes[b' ' as usize].0[0]);
         }
 
         // Write frequency table to output
@@ -180,19 +203,18 @@ impl HuffmanDecoder {
         let mut stack: Vec<(&Node, [u8; 32], u8)> = Vec::new();
         stack.push((self.root.as_ref().unwrap(), [0; 32], 0));
 
-        while let Some((node, mut acc_code,  mut code_length)) = stack.pop() {
+        while let Some((node, acc_code, code_length)) = stack.pop() {
             if let Some(byte_value) = node.byte_value {
                 self.codes[byte_value as usize] = (acc_code, code_length);
             } else {
                 if let Some(ref right) = node.right {
-                    acc_code[(code_length / 8) as usize] |= 1 << (code_length % 8);
-                    code_length += 1;
-                    stack.push((right, acc_code, code_length));
+                    let mut r_acc_code = acc_code;
+                    r_acc_code[(code_length / 8) as usize] |= 1 << (code_length % 8);
+                    stack.push((right, r_acc_code, code_length + 1));
                 }
 
                 if let Some(ref left) = node.left {
-                    code_length += 1;
-                    stack.push((left, acc_code, code_length));
+                    stack.push((left, acc_code, code_length + 1));
                 }
             }
         }
@@ -219,15 +241,15 @@ impl HuffmanDecoder {
         
         {
             // Debug
-            let mut deb_print = internal_decoder.codes.iter_mut().enumerate().filter(|(_, (code, length))| *length > 0)
+            let deb_print = internal_decoder.codes.iter_mut().enumerate().filter(|(_, (code, length))| *length > 0)
                                                              .map(|(idx, (code, length))| {
                                                                  let code = &code[0..((*length as usize + 7) / 8)];
                                                                  (idx, length, format!("{:?}", code.to_vec()))
                                                              }).collect::<Vec<_>>();
 
-            deb_print.sort_by_key(|(_, &mut l, _)| l);
-
-            println!("Codes ({}): {:?}", deb_print.len(), deb_print);
+            println!("Code for i: {:b}", internal_decoder.codes[b'i' as usize].0[0]);
+            println!("Code for L: {:b}", internal_decoder.codes[b'L' as usize].0[0]);
+            println!("Code for Space: {:b}", internal_decoder.codes[b' ' as usize].0[0]);
         }
 
         // Decode all bytes
@@ -236,8 +258,10 @@ impl HuffmanDecoder {
             if byte_arr.len() == 0 {
                 break;
             }
+            let read_val = byte_arr[0]; 
+            print!("{}", read_val);
 
-            current_node = if byte_arr[0] == 0 {
+            current_node = if read_val == 0 {
                 current_node.left.as_ref().unwrap()
             } else {
                 current_node.right.as_ref().unwrap()
@@ -246,6 +270,7 @@ impl HuffmanDecoder {
             if let Some(byte_value) = current_node.byte_value {
                 internal_decoder.output_stream.write_bit_sequence(&[current_node.byte_value.unwrap()], 8).unwrap();
                 current_node = internal_decoder.root.as_ref().unwrap();
+                // println!(" => Decoded byte: {:0x}", byte_value);
             }
         }
 
