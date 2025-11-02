@@ -102,7 +102,7 @@ impl HuffmanEncoder {
                 self.codes[byte_value as usize] = (acc_code, code_length);
             } else {
                 if let Some(ref right) = node.right {
-                    let mut r_acc_code = acc_code;
+                    let mut r_acc_code = acc_code.clone();
                     r_acc_code[(code_length / 8) as usize] |= 1 << (code_length % 8);
                     stack.push((right, r_acc_code, code_length + 1));
                 }
@@ -253,24 +253,25 @@ impl HuffmanDecoder {
         }
 
         // Decode all bytes
+        let mut symbols_left: u32 = internal_decoder.freq_t.iter().sum();
         let mut current_node = internal_decoder.root.as_ref().unwrap();
         while let Ok(byte_arr) = internal_decoder.input_stream.read_bit_sequence(1) {
-            if byte_arr.len() == 0 {
+            if byte_arr.len() == 0 || symbols_left == 0 {
                 break;
             }
-            let read_val = byte_arr[0]; 
-            print!("{}", read_val);
 
+            let read_val = byte_arr[0]; 
             current_node = if read_val == 0 {
                 current_node.left.as_ref().unwrap()
             } else {
                 current_node.right.as_ref().unwrap()
             };
-            
+
             if let Some(byte_value) = current_node.byte_value {
                 internal_decoder.output_stream.write_bit_sequence(&[current_node.byte_value.unwrap()], 8).unwrap();
                 current_node = internal_decoder.root.as_ref().unwrap();
-                // println!(" => Decoded byte: {:0x}", byte_value);
+
+                symbols_left -= 1;
             }
         }
 

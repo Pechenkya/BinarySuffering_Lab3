@@ -100,12 +100,13 @@ impl BitStream {
 
             // Handle remaining bits
             if remaining_bits != 0 {
+                let last_input_byte_id = (bit_len + 7) / 8 - 1;
                 if remaining_bits + basic_shift > 8 {
-                    self.buff[last_byte_id] |= in_buff[in_buff.len() - 1] << basic_shift;
-                    self.buff.push((in_buff[in_buff.len() - 1] << (8 - remaining_bits)) >> (16 - remaining_bits - basic_shift));
+                    self.buff[last_byte_id] |= in_buff[last_input_byte_id] << basic_shift;
+                    self.buff.push((in_buff[last_input_byte_id] << (8 - remaining_bits)) >> (16 - remaining_bits - basic_shift));
                 }
                 else {
-                    self.buff[last_byte_id] |= (in_buff[in_buff.len() - 1] << (8 - remaining_bits)) >> (8 - remaining_bits - basic_shift);
+                    self.buff[last_byte_id] |= (in_buff[last_input_byte_id] << (8 - remaining_bits)) >> (8 - remaining_bits - basic_shift);
                 }
             }
         }
@@ -154,76 +155,53 @@ impl BitStream {
             let bit_chunk_size = self.byte_chunk_size * 8;
             let basic_shift = self.bit_pointer % 8;
             
-            if basic_shift == 0 {
-                // Easy case, move full bytes and fill bit remainder
-                let bits_to_move = min(bit_chunk_size - self.bit_pointer, size - bits_read);
+            let bits_to_move = min(bit_chunk_size - self.bit_pointer, size - bits_read);
+            let start_id = self.bit_pointer / 8;
+            let end_id = (self.bit_pointer + bits_to_move + 7) / 8;
 
-                // Move bytes
-                let start_id = self.bit_pointer / 8;
-                let end_id = (self.bit_pointer + bits_to_move) / 8;
-                result.append(&mut self.buff[start_id..end_id].to_vec());
-                
-                // Move remainder bits
-                let rem_bits = bits_to_move % 8;
-                if rem_bits != 0 {
-                    result.push((self.buff[end_id] << (8 - rem_bits)) >> (8 - rem_bits));
+            // Copy all the bytes from start to end
+            let curr_start_id = result.len();
+            result.append(&mut self.buff[start_id..end_id].to_vec());
+
+            // Set bytes in correct position
+            if basic_shift != 0 {
+                for i in curr_start_id..result.len() - 1 {
+                    result[i] = (result[i] >> basic_shift) | (result[i + 1] << (8 - basic_shift));
                 }
 
-                // Move pointers/counters
-                bits_read += bits_to_move;
-                self.bit_pointer += bits_to_move;
+                let last_id = result.len() - 1;
+                result[last_id] >>= basic_shift;
             }
-            else {
-                let mut byte_id = self.bit_pointer / 8;
 
-                // Corner case of empty return vector
-                if result.is_empty() {
-                    result.push(0);
-                    // result.push(self.buff[byte_id] >> basic_shift);
-                    // byte_id += 1;
-                    // bits_read += 8 - basic_shift;
-                    // self.bit_pointer += 8 - basic_shift;
-                }
+            // Remove last byte if it is not used
+            if (bits_to_move + 7) / 8 < (result.len() - curr_start_id) {
+                result.pop();
+            }
 
-                let mut bits_left = min(size - bits_read, bit_chunk_size - self.bit_pointer);
-                let mut last_id = result.len() - 1;
+            // Clear unused high bits in the last byte
+            let rem_bits = (bits_to_move % 8) as u8;
+            if rem_bits != 0 {
+                let last_id = result.len() - 1;
+                result[last_id] = (result[last_id] << (8 - rem_bits)) >> (8 - rem_bits);
+            }
 
-                while bits_left > 8 {
-                    // Move to high lower bits of the byte
-                    result[last_id] |= self.buff[byte_id] << (8 - basic_shift);
-
-                    // Move to low high bits of the byte
-                    result.push(self.buff[byte_id] >> basic_shift);
-
-                    // Next bit
-                    bits_left -= 8;
-                    byte_id += 1;
-                    last_id += 1;
-
-                    bits_read += 8;
-                    self.bit_pointer += 8;
-                }
-
-                // Process tail bits
-                if bits_left != 0
-                {
-                    if bits_left > 8 - basic_shift {
-                        result[last_id] |= self.buff[byte_id] << (8 - basic_shift);
-                        // Remainder has size b_l - b_s, to get it we need to shift left on 8 - b_l (clear high bits)
-                        // And then to set it to low bits we need to move it on 8 - b_l + b_s (mattth)
-                        result.push((self.buff[byte_id] << (8 - bits_left)) >> 8 - bits_left + basic_shift);
+            // If we have previous chunk in result, need to merge bytes
+            if curr_start_id != 0 && basic_shift != 0 {
+                let shift_in_chunks = (bits_read % 8) as u8;
+                if shift_in_chunks != 0 {
+                    for i in curr_start_id..result.len() {
+                        result[i - 1] |= result[i] << (8 - shift_in_chunks);
+                        result[i] = result[i] >> shift_in_chunks;
                     }
-                    else 
-                    {
-                        // Set the last bits to the end of the buffer (clear high bits, then move to low on b_s - b_l (mathhh))
-                        // result[last_id] |= ((self.buff[byte_id] << (8 - bits_left)) >> (8 - bits_left)) << basic_shift;
-                        let _debug_byte_val = self.buff[byte_id];
-                        result[last_id] |= ((self.buff[byte_id] >> basic_shift) << (8 - bits_left)) >> (8 - bits_left);
+
+                    if rem_bits <= (8 - shift_in_chunks) {
+                        result.pop();
                     }
-                    bits_read += bits_left;
-                    self.bit_pointer += bits_left;
                 }
             }
+
+            bits_read += bits_to_move;
+            self.bit_pointer += bits_to_move;
         }
 
         Ok(result)
